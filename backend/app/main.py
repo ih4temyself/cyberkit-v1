@@ -6,10 +6,8 @@ from pathlib import Path
 import json
 import hashlib
 import httpx
-try:
-    from zxcvbn import zxcvbn  # type: ignore
-except Exception:  # pragma: no cover
-    zxcvbn = None  # fallback if not installed yet
+from zxcvbn import zxcvbn  # type: ignore
+
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "modules.json"
 
