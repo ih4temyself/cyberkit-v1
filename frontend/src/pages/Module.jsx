@@ -36,6 +36,7 @@ export default function Module(){
   if(!data) return <p className="muted">Завантаження…</p>
 
   const startQuiz = () => setStep('quiz')
+  const quizLen = (data.quiz?.length || 0)
 
   const pick = (qid, idx) => setAnswers(a => ({...a, [qid]: idx}))
 
@@ -73,14 +74,26 @@ export default function Module(){
             })}
           </section>
           <div className="actions">
-            <button className="primary" onClick={startQuiz}>Почати запитання</button>
+            {quizLen > 0 ? (
+              <button className="primary" onClick={startQuiz}>Почати запитання</button>
+            ) : (
+              (() => {
+                const g = getGameForModule(data.id)
+                if(!g) return null
+                return (
+                  <Link to={`/game/${g.id}`} className="primary" style={{display:'inline-block', textAlign:'center'}}>
+                    Перейти до гри: {g.title}
+                  </Link>
+                )
+              })()
+            )}
           </div>
         </>
       )}
 
-      {step==='quiz' && (
+      {step==='quiz' && quizLen > 0 && (
         <section className="quiz">
-          <h2>Питання {qIndex+1} / {data.quiz.length}</h2>
+          <h2>Питання {qIndex+1} / {quizLen}</h2>
           {(() => {
             const q = data.quiz[qIndex]
             return (
@@ -105,7 +118,7 @@ export default function Module(){
           <div className="actions">
             <button onClick={prev} disabled={qIndex===0}>Назад</button>
             <button className="primary" disabled={answers[data.quiz[qIndex].id]===undefined || busy} onClick={next}>
-              {qIndex === data.quiz.length-1 ? 'Завершити модуль' : 'Далі'}
+              {qIndex === quizLen-1 ? 'Завершити модуль' : 'Далі'}
             </button>
           </div>
         </section>

@@ -96,7 +96,24 @@ export default function Run(){
             })}
           </section>
           <div className="actions">
-            <button className="primary" onClick={startQuiz}>Почати запитання</button>
+            {(mod.quiz?.length || 0) > 0 ? (
+              <button className="primary" onClick={startQuiz}>Почати запитання</button>
+            ) : (
+              <>
+                <button className="primary" onClick={nextModule}>
+                  {index === order.length-1 ? 'Показати підсумок тесту' : 'Наступний модуль'}
+                </button>
+                {(() => {
+                  const g = getGameForModule(mod.id)
+                  if(!g) return null
+                  return (
+                    <Link to={`/game/${g.id}`} state={{ index }} className="ghost" style={{display:'inline-block', textAlign:'center'}}>
+                      Перейти до гри: {g.title}
+                    </Link>
+                  )
+                })()}
+              </>
+            )}
           </div>
         </>
       )}
