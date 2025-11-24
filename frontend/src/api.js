@@ -1,4 +1,4 @@
-const API = 'http://localhost:8000/api';
+const API = 'http://localhost:9000/api';
 
 export async function fetchModules(){
   const r = await fetch(`${API}/modules`);
@@ -7,6 +7,15 @@ export async function fetchModules(){
 
 export async function fetchModule(id){
   const r = await fetch(`${API}/modules/${id}`);
+  return await r.json();
+}
+
+export async function checkAnswer(moduleId, questionId, answerIndex){
+  const r = await fetch(`${API}/modules/${moduleId}/quiz/check`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({question_id: questionId, answer_index: answerIndex})
+  });
   return await r.json();
 }
 

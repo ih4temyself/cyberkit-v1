@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { fetchModules, fetchModule, gradeQuiz } from '../api.js'
+import { fetchModules, fetchModule, gradeQuiz, checkAnswer } from '../api.js'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { getGameForModule } from '../games/index.js'
+import soundManager from '../utils/sounds.js'
 
 export default function Run(){
   const [order, setOrder] = useState([])     
@@ -10,7 +11,10 @@ export default function Run(){
   const [phase, setPhase] = useState('loading')
   const [qIndex, setQIndex] = useState(0)
   const [answers, setAnswers] = useState({})
-  const [scores, setScores] = useState([])    
+  const [scores, setScores] = useState([])
+  const [answerFeedback, setAnswerFeedback] = useState({}) // Track correct/incorrect per question
+  const [showVideo, setShowVideo] = useState(false) // Track if video should be shown
+  const [videoSrc, setVideoSrc] = useState(null) // Video source (yay or boom)    
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -28,9 +32,22 @@ export default function Run(){
 
   useEffect(()=>{
     if(!order.length) return
-    setPhase('loading'); setAnswers({}); setQIndex(0)
+    setPhase('loading'); setAnswers({}); setQIndex(0); setAnswerFeedback({}); setShowVideo(false); setVideoSrc(null)
     fetchModule(order[index]).then(d => { setMod(d); setPhase('content') })
   }, [order, index])
+
+  // Play OST on final test page
+  useEffect(() => {
+    if (phase === 'final') {
+      soundManager.playMusic()
+    } else {
+      soundManager.stopMusic()
+    }
+    // Cleanup: stop music when component unmounts or phase changes
+    return () => {
+      soundManager.stopMusic()
+    }
+  }, [phase])
 
   const audio = useMemo(()=>({
     beep(ok=true){
@@ -53,14 +70,68 @@ export default function Run(){
 
   const nextQ = async () => {
     const last = qIndex === (mod.quiz?.length || 0) - 1
-    if (!last) { setQIndex(qIndex + 1); return }
-    const res = await gradeQuiz(mod.id, answers)
-    setScores(s => [...s, { id: mod.id, title: mod.title, score: res.score, total: res.total, details: res.results }])
-    const prog = JSON.parse(localStorage.getItem('progress') || '{}')
-    const best = Math.max(res.score, (prog[mod.id]?.best || 0))
-    localStorage.setItem('progress', JSON.stringify({...prog, [mod.id]: {best}}))
-    setPhase('result')
-    audio.beep(res.score === res.total)
+    
+    // Check current answer and play sound before moving to next
+    if (!last) {
+      const currentQ = mod.quiz[qIndex]
+      const userAnswer = answers[currentQ.id]
+      if (userAnswer !== undefined) {
+        try {
+          const result = await checkAnswer(mod.id, currentQ.id, userAnswer)
+          soundManager.play(result.correct ? 'right_answer' : 'wrong_answer')
+          // Store feedback for animation
+          setAnswerFeedback(prev => ({ ...prev, [currentQ.id]: result.correct ? 'correct' : 'incorrect' }))
+          // Wait a bit for animation to show, then move to next question
+          setTimeout(() => {
+            setQIndex(qIndex + 1)
+          }, 800) // 800ms to see the animation
+          return
+        } catch (err) {
+          console.warn('Could not check answer:', err)
+        }
+      }
+      setQIndex(qIndex + 1)
+      return
+    }
+    
+    // Last question - check it first, then grade all and show results
+    const currentQ = mod.quiz[qIndex]
+    const userAnswer = answers[currentQ.id]
+    if (userAnswer !== undefined) {
+      try {
+        const result = await checkAnswer(mod.id, currentQ.id, userAnswer)
+        soundManager.play(result.correct ? 'right_answer' : 'wrong_answer')
+        // Store feedback for animation
+        setAnswerFeedback(prev => ({ ...prev, [currentQ.id]: result.correct ? 'correct' : 'incorrect' }))
+      } catch (err) {
+        console.warn('Could not check answer:', err)
+      }
+    }
+    
+    // Wait for animation, then show results
+    setTimeout(async () => {
+      const res = await gradeQuiz(mod.id, answers)
+      setScores(s => [...s, { id: mod.id, title: mod.title, score: res.score, total: res.total, details: res.results }])
+      const prog = JSON.parse(localStorage.getItem('progress') || '{}')
+      const best = Math.max(res.score, (prog[mod.id]?.best || 0))
+      localStorage.setItem('progress', JSON.stringify({...prog, [mod.id]: {best}}))
+      
+      // Play win/lose sound based on score (passing is 50% or more)
+      const passingScore = res.total / 2
+      const passed = res.score >= passingScore
+      
+      // Set video based on pass/fail
+      setVideoSrc(passed ? '/yay.MOV' : '/boom.MOV')
+      setShowVideo(true)
+      
+      if (passed) {
+        soundManager.play('win')
+      } else {
+        soundManager.play('lose')
+      }
+      
+      setPhase('result')
+    }, 800)
   }
 
   const nextModule = () => {
@@ -123,8 +194,9 @@ export default function Run(){
           <h2>{mod.title}: питання {qIndex+1} / {mod.quiz.length}</h2>
           {(() => {
             const q = mod.quiz[qIndex]
+            const feedback = answerFeedback[q.id]
             return (
-              <div className="qcard">
+              <div className={`qcard ${feedback === 'correct' ? 'answer-correct' : feedback === 'incorrect' ? 'answer-incorrect' : ''}`}>
                 <div className="qtitle">{q.question}</div>
                 <div className="opts">
                   {q.options.map((opt, idx) => {
@@ -156,6 +228,22 @@ export default function Run(){
 
       {phase==='result' && (
         <section className="results">
+          {showVideo && videoSrc && (
+            <div className="result-video-container">
+              <video 
+                className="result-video"
+                src={videoSrc}
+                autoPlay
+                muted={false}
+                playsInline
+                onEnded={() => setShowVideo(false)}
+                onError={(e) => {
+                  console.warn('Video playback error:', e)
+                  setShowVideo(false)
+                }}
+              />
+            </div>
+          )}
           <h2>Результат модуля: {scores[scores.length-1].score} / {scores[scores.length-1].total}</h2>
           {scores[scores.length-1].details.map(r => (
             <div key={r.questionId} className={`rline ${r.correct?'ok':'bad'}`}>

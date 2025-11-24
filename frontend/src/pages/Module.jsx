@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getGameForModule } from '../games/index.js'
-import { fetchModule, gradeQuiz } from '../api.js'
+import { fetchModule, gradeQuiz, checkAnswer } from '../api.js'
+import soundManager from '../utils/sounds.js'
 
 export default function Module(){
   const { id } = useParams()
@@ -11,9 +12,12 @@ export default function Module(){
   const [busy, setBusy] = useState(false)
   const [step, setStep] = useState('content') 
   const [qIndex, setQIndex] = useState(0)
+  const [answerFeedback, setAnswerFeedback] = useState({}) 
+  const [showVideo, setShowVideo] = useState(false)
+  const [videoSrc, setVideoSrc] = useState(null) // video yay or boom 
 
   useEffect(()=>{
-    setResult(null); setAnswers({}); setStep('content'); setQIndex(0)
+    setResult(null); setAnswers({}); setStep('content'); setQIndex(0); setAnswerFeedback({}); setShowVideo(false); setVideoSrc(null)
     fetchModule(id).then(setData)
   }, [id])
 
@@ -42,16 +46,68 @@ export default function Module(){
 
   const next = async () => {
     const last = qIndex === (data.quiz?.length || 0) - 1
-    if (!last) { setQIndex(qIndex + 1); return }
-    setBusy(true)
-    const res = await gradeQuiz(id, answers)
-    setResult(res)
-    setBusy(false)
-    setStep('done')
-    const prog = JSON.parse(localStorage.getItem('progress') || '{}')
-    const best = Math.max(res.score, (prog[id]?.best || 0))
-    localStorage.setItem('progress', JSON.stringify({...prog, [id]: {best}}))
-    audio.beep(res.score === res.total)
+    
+    // Check current answer and play sound before moving to next
+    if (!last) {
+      const currentQ = data.quiz[qIndex]
+      const userAnswer = answers[currentQ.id]
+      if (userAnswer !== undefined) {
+        try {
+          const result = await checkAnswer(id, currentQ.id, userAnswer)
+          soundManager.play(result.correct ? 'right_answer' : 'wrong_answer')
+          setAnswerFeedback(prev => ({ ...prev, [currentQ.id]: result.correct ? 'correct' : 'incorrect' }))
+          setTimeout(() => {
+            setQIndex(qIndex + 1)
+          }, 800) 
+          return
+        } catch (err) {
+          console.warn('Could not check answer:', err)
+        }
+      }
+      setQIndex(qIndex + 1)
+      return
+    }
+    
+    // Last question - check it first, then grade all
+    const currentQ = data.quiz[qIndex]
+    const userAnswer = answers[currentQ.id]
+    if (userAnswer !== undefined) {
+      try {
+        const result = await checkAnswer(id, currentQ.id, userAnswer)
+        soundManager.play(result.correct ? 'right_answer' : 'wrong_answer')
+        // Store feedback for animation
+        setAnswerFeedback(prev => ({ ...prev, [currentQ.id]: result.correct ? 'correct' : 'incorrect' }))
+      } catch (err) {
+        console.warn('Could not check answer:', err)
+      }
+    }
+    
+    // Wait for animation, then show results
+    setTimeout(async () => {
+      setBusy(true)
+      const res = await gradeQuiz(id, answers)
+      setResult(res)
+      setBusy(false)
+      
+      // Play win/lose sound based on score (passing is 50% or more)
+      const passingScore = res.total / 2
+      const passed = res.score >= passingScore
+      
+      // Set video based on pass/fail
+      setVideoSrc(passed ? '/yay.MOV' : '/boom.MOV')
+      setShowVideo(true)
+      
+      if (passed) {
+        soundManager.play('win')
+      } else {
+        soundManager.play('lose')
+      }
+      
+      const prog = JSON.parse(localStorage.getItem('progress') || '{}')
+      const best = Math.max(res.score, (prog[id]?.best || 0))
+      localStorage.setItem('progress', JSON.stringify({...prog, [id]: {best}}))
+      setStep('done')
+    }, 800)
   }
 
   const prev = () => { if(qIndex>0) setQIndex(qIndex-1) }
@@ -96,8 +152,9 @@ export default function Module(){
           <h2>Питання {qIndex+1} / {quizLen}</h2>
           {(() => {
             const q = data.quiz[qIndex]
+            const feedback = answerFeedback[q.id]
             return (
-              <div className="qcard">
+              <div className={`qcard ${feedback === 'correct' ? 'answer-correct' : feedback === 'incorrect' ? 'answer-incorrect' : ''}`}>
                 <div className="qtitle">{q.question}</div>
                 <div className="opts">
                   {q.options.map((opt, idx) => {
@@ -126,6 +183,22 @@ export default function Module(){
 
       {step==='done' && result && (
         <section className="results">
+          {showVideo && videoSrc && (
+            <div className="result-video-container">
+              <video 
+                className="result-video"
+                src={videoSrc}
+                autoPlay
+                muted={false}
+                playsInline
+                onEnded={() => setShowVideo(false)}
+                onError={(e) => {
+                  console.warn('Video playback error:', e)
+                  setShowVideo(false)
+                }}
+              />
+            </div>
+          )}
           <h3>Результат модуля: {result.score} / {result.total}</h3>
           {result.results.map(r => (
             <div key={r.questionId} className={`rline ${r.correct?'ok':'bad'}`}>
@@ -134,7 +207,7 @@ export default function Module(){
             </div>
           ))}
           <div className="actions">
-            <button className="ghost" onClick={()=>{ setResult(null); setAnswers({}); setStep('quiz'); setQIndex(0) }}>
+            <button className="ghost" onClick={()=>{ setResult(null); setAnswers({}); setStep('quiz'); setQIndex(0); setShowVideo(false); setVideoSrc(null) }}>
               Спробувати ще раз
             </button>
             <Link to="/" className="primary" style={{display:'inline-block', textAlign:'center'}}>На головну</Link>

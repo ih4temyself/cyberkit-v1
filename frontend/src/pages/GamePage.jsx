@@ -1,10 +1,19 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getGame } from '../games/index.js'
+import soundManager from '../utils/sounds.js'
 
 export default function GamePage(){
   const { id } = useParams()
   const game = getGame(id)
+  
+  useEffect(() => {
+    soundManager.playMusic()
+    return () => {
+      soundManager.stopMusic()
+    }
+  }, [id])
+  
   if(!game) return (
     <div className="module">
       <Link to="/" className="back">← На головну</Link>

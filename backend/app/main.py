@@ -76,6 +76,28 @@ def get_quiz(module_id: str):
         raise HTTPException(404, "Module not found")
     return {"quiz": sanitize_quiz_for_client(module.get("quiz", []))}
 
+class CheckAnswerPayload(BaseModel):
+    question_id: str
+    answer_index: int
+
+@app.post("/api/modules/{module_id}/quiz/check")
+def check_answer(module_id: str, payload: CheckAnswerPayload):
+    """Check if a single answer is correct"""
+    data = load_data()
+    module = next((m for m in data["modules"] if m["id"] == module_id), None)
+    if not module:
+        raise HTTPException(404, "Module not found")
+    quiz = module.get("quiz", [])
+    question = next((q for q in quiz if q["id"] == payload.question_id), None)
+    if not question:
+        raise HTTPException(404, "Question not found")
+    is_correct = question.get("answer") == payload.answer_index
+    return {
+        "correct": is_correct,
+        "correctIndex": question.get("answer"),
+        "yourIndex": payload.answer_index
+    }
+
 @app.post("/api/modules/{module_id}/quiz/grade")
 def grade_quiz(module_id: str, payload: QuizAnswerPayload):
     data = load_data()

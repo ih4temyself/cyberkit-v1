@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import soundManager from '../../utils/sounds.js'
 
 export default function SecurityHuntGame(){
   const [secured, setSecured] = useState(() => new Set())
@@ -49,10 +50,14 @@ export default function SecurityHuntGame(){
     setSecured(prev => {
       const next = new Set(prev)
       if(next.has(id)){
+        // Unsecuring an item (mistake)
         next.delete(id)
         setMistakes(m => m + 1)
+        soundManager.play('wrong_answer')
       }else{
+        // Securing an item (correct)
         next.add(id)
+        soundManager.play('right_answer')
       }
       return next
     })
