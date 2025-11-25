@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { fetchModules, fetchModule, gradeQuiz, checkAnswer } from '../api.js'
+import { fetchModules, fetchModule, gradeQuiz, checkAnswer, resolveStaticUrl } from '../api.js'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { getGameForModule } from '../games/index.js'
 import soundManager from '../utils/sounds.js'
@@ -66,6 +66,23 @@ export default function Run(){
   }), [])
 
   const startQuiz = () => setPhase('quiz')
+  const lessonBlocks = useMemo(() => {
+    if (!mod) return []
+    const blocks = [...(mod.content || [])]
+    const hasIntroVideoBlock = Boolean(
+      mod.introVideo &&
+      blocks.some(block => block.type === 'video' && block.src === mod.introVideo)
+    )
+    if (mod.introVideo && !hasIntroVideoBlock) {
+      blocks.unshift({
+        type: 'video',
+        src: mod.introVideo,
+        poster: mod.introPoster,
+        caption: mod.introVideoCaption
+      })
+    }
+    return blocks
+  }, [mod])
   const pick = (qid, idx) => setAnswers(a => ({...a, [qid]: idx}))
 
   const nextQ = async () => {
@@ -159,9 +176,28 @@ export default function Run(){
         <>
           <h1>{mod.title}</h1>
           <section className="lesson">
-            {mod.content?.map((block, idx) => {
+            {lessonBlocks.map((block, idx) => {
               if(block.type === 'p') return <p key={idx}>{block.text}</p>
               if(block.type === 'ul') return <ul key={idx}>{block.items.map((it,i)=><li key={i}>{it}</li>)}</ul>
+              if(block.type === 'video'){
+                const src = resolveStaticUrl(block.src)
+                const poster = block.poster ? resolveStaticUrl(block.poster) : undefined
+                return (
+                  <div key={idx} className="content-video-block">
+                    <video
+                      className="content-video"
+                      src={src}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      poster={poster}
+                    />
+                    {block.caption && (
+                      <p className="content-video-caption">{block.caption}</p>
+                    )}
+                  </div>
+                )
+              }
               if(block.type === 'tip') return <div key={idx} className="tip">💡 {block.text}</div>
               return null
             })}

@@ -12,6 +12,22 @@ const getApiUrl = () => {
 
 const API = getApiUrl();
 
+const getStaticBaseUrl = () => {
+  if (/^https?:\/\//i.test(API)) {
+    const { origin } = new URL(API);
+    return origin;
+  }
+  return '';
+};
+
+const STATIC_BASE = getStaticBaseUrl();
+
+export const resolveStaticUrl = (path = '') => {
+  if (!path) return '';
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  return `${STATIC_BASE}${normalized}`;
+};
+
 export async function fetchModules(){
   const r = await fetch(`${API}/modules`);
   return await r.json();

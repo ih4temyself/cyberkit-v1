@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Dict, Any
 from pathlib import Path
@@ -9,7 +10,10 @@ import httpx
 from zxcvbn import zxcvbn  # type: ignore
 
 
-DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "modules.json"
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_PATH = BASE_DIR / "data" / "modules.json"
+STATIC_DIR = BASE_DIR / "static"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="CyberSec Edu API", version="1.0.0")
 
@@ -26,6 +30,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 class QuizAnswerPayload(BaseModel):
     answers: Dict[str, int] 
