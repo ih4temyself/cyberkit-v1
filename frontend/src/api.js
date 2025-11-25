@@ -1,4 +1,16 @@
-const API = 'http://localhost:9000/api';
+// Auto-detect API URL based on environment
+// In production, nginx proxies /api/ to backend, so use relative path
+// In development, connect directly to backend
+const getApiUrl = () => {
+  // In production (cyberkit.space), nginx proxies /api/ to backend
+  if (window.location.hostname === 'cyberkit.space' || window.location.hostname === 'www.cyberkit.space') {
+    return '/api';  // Relative path - nginx will proxy to backend
+  }
+  // In development, connect directly to backend on port 9000
+  return 'http://localhost:9000/api';
+};
+
+const API = getApiUrl();
 
 export async function fetchModules(){
   const r = await fetch(`${API}/modules`);
